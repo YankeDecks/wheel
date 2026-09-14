@@ -143,7 +143,9 @@
   .lrow .li{font-size:18px;width:24px;text-align:center;flex:none;}
   .lrow .lt{flex:1;font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .lrow .ld{font-size:11px;color:var(--muted);flex:none;}
-  .lrow.removed{opacity:.6;}.lrow.removed .lt{text-decoration:line-through;}
+  .lrow.removed{opacity:.55;}.lrow.removed .lt{text-decoration:line-through;}
+  .lrow .paybtn{flex:none;font-size:11px;font-weight:800;border-radius:8px;padding:7px 10px;border:1px solid #ff8a8a66;background:#2a1414;color:#ff9a9a;cursor:pointer;}
+  .lrow .paybtn.done{border-color:#b0d23566;background:#0e1206;color:var(--green);}
 
   .scrim{position:fixed;inset:0;z-index:55;background:#0008;display:none;}
   .scrim.show{display:block;}
@@ -162,7 +164,7 @@
       <button class="icobtn" id="installBtn" title="Install app">⤓</button>
       <button class="icobtn" id="muteBtn" title="Sound">🔊</button>
       <button class="icobtn" id="fsBtn" title="Fullscreen for TV">⛶</button>
-      <button class="icobtn" id="logBtn" title="Spin history">📋</button>
+      <button class="icobtn" id="logBtn" title="Winners log">📋</button>
       <button class="icobtn" id="editBtn" title="Edit wheel">✎</button>
     </div>
   </header>
@@ -219,17 +221,17 @@
 </aside>
 
 <aside class="drawer" id="logDrawer">
-  <h2>Spin History</h2>
-  <p class="sub">Every winner, newest first. Tracks who's been pulled.</p>
+  <h2>Winners Log</h2>
+  <p class="sub">Everyone who has won, newest first. Tap <b>Owed</b> once you hand over the gift card.</p>
   <div class="stats">
     <div class="stat"><div class="v" id="stRemain">0</div><div class="k">On wheel</div></div>
-    <div class="stat"><div class="v" id="stPulled">0</div><div class="k">Pulled</div></div>
-    <div class="stat"><div class="v" id="stSpins">0</div><div class="k">Spins</div></div>
+    <div class="stat"><div class="v" id="stWins">0</div><div class="k">Winners</div></div>
+    <div class="stat"><div class="v" id="stOwed">0</div><div class="k">Owed</div></div>
   </div>
   <div class="loglist" id="logList"></div>
   <div class="foot2">
     <button id="copyLogBtn">Copy log</button>
-    <button id="clearLogBtn">Clear history</button>
+    <button id="clearLogBtn">Clear log</button>
   </div>
 </aside>
 
@@ -251,12 +253,17 @@
   const defaultItems=()=>interleave(DEFAULT_NAMES.map(mkName),DEFAULT_SPECIALS());
 
   let items=loadItems(),hist=loadJSON(HK,[]),stats=Object.assign({pulled:0,spins:0},loadJSON(SK,{}));
+  const WK="yanke_wheel_winners_v1";
+  let winners=loadJSON(WK,null);
+  if(!Array.isArray(winners)){winners=(Array.isArray(hist)?hist:[]).filter(x=>x&&x.type==="name").map(x=>({ts:x.ts,name:x.label,paid:false}));}
+  let currentWinnerId=null,currentWinnerName="";
+  const saveWinners=()=>{try{localStorage.setItem(WK,JSON.stringify(winners.slice(0,500)));}catch(e){}};
+  function logWinner(name){winners.unshift({ts:Date.now(),name,paid:false});saveWinners();refreshStatsUI();}
   function loadJSON(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v??d;}catch(e){return d;}}
   function loadItems(){try{const v=JSON.parse(localStorage.getItem(IK));if(Array.isArray(v)&&v.length)return v;}catch(e){}return defaultItems();}
   const saveItems=()=>{try{localStorage.setItem(IK,JSON.stringify(items));}catch(e){}};
   const saveHist =()=>{try{localStorage.setItem(HK,JSON.stringify(hist.slice(0,400)));}catch(e){}};
   const saveStats=()=>{try{localStorage.setItem(SK,JSON.stringify(stats));}catch(e){}};
-  function logEvent(type,label,extra){hist.unshift(Object.assign({ts:Date.now(),type,label},extra||{}));saveHist();refreshStatsUI();}
   const nameIndexes=()=>items.map((it,i)=>it.type==="name"?i:-1).filter(i=>i>=0);
 
   const GREEN={bg:"#b0d235",fg:"#1a1718"},BLACK={bg:"#231f20",fg:"#f5f5f3"},CHAR={bg:"#3a3637",fg:"#f5f5f3"},SPEC={bg:"#0f1305",fg:"#b0d235"};
@@ -336,7 +343,7 @@
       draw();if(p<1)requestAnimationFrame(frame);else{rot=((target%TAU)+TAU)%TAU;draw();finish();}})(performance.now());
   }
   function finish(){const k=pendingWinner;if(k==null||!items[k]||items[k].type!=="name"){spinning=false;$("#spinBtn").disabled=false;return;}
-    stats.spins=(stats.spins||0)+1;saveStats();logEvent("name",items[k].label);reveal(k);}
+    reveal(k);}
 
   /* ---------- three-act reveal: anticipation -> reveal -> celebration (all cosmetic) ---------- */
   function reveal(k){ anticipate(k,()=>doReveal(k)); }
@@ -391,8 +398,8 @@
     }catch(e){hiddenIndex=-1;draw();showWinner(k);celebrateConfetti();}
   }
   function showWinner(k){const it=items[k];if(!it){$("#spinBtn").disabled=false;return;}
-    if(celebrated)return;celebrated=true;
-    $("#winnerName").textContent=it.label;$("#removeWinner").dataset.id=it.id;$("#modal").classList.add("show");fanfare2();}
+    if(celebrated)return;celebrated=true;currentWinnerId=it.id;currentWinnerName=it.label;
+    $("#winnerName").textContent=it.label;$("#modal").classList.add("show");fanfare2();}
   function celebrateConfetti(){let v=0;(function volley(){
     burstAt(fx.width*0.5,fx.height*0.34,150,null,1);
     burstAt(fx.width*0.06,fx.height*0.54,70,-0.35,1.15);
@@ -477,16 +484,19 @@
   }
   function addName(){const inp=$("#nameInput"),v=inp.value.trim();if(!v)return;items.push(mkName(v));saveItems();inp.value="";renderList();draw();const l=$("#nameList");l.scrollTop=l.scrollHeight;inp.focus();refreshStatsUI();}
   function openDrawer(o){$("#drawer").classList.toggle("open",o);$("#scrim").classList.toggle("show",o);}
-  function openLog(o){$("#logDrawer").classList.toggle("open",o);$("#scrim").classList.toggle("show",o);if(o)renderLog();}
+  function openLog(o){$("#logDrawer").classList.toggle("open",o);$("#scrim").classList.toggle("show",o);if(o)renderWinners();}
 
-  function refreshStatsUI(){$("#stRemain").textContent=items.filter(it=>it.type==="name").length;$("#stPulled").textContent=stats.pulled||0;$("#stSpins").textContent=stats.spins||0;}
+  function refreshStatsUI(){$("#stRemain").textContent=items.filter(it=>it.type==="name").length;const w=$("#stWins"),o=$("#stOwed");if(w)w.textContent=winners.length;if(o)o.textContent=winners.filter(x=>!x.paid).length;}
   function fmt(ts){const d=new Date(ts);return d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+d.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"});}
-  function renderLog(){refreshStatsUI();const list=$("#logList");list.innerHTML="";
-    if(!hist.length){list.innerHTML='<div class="empty">No spins yet.<br>Spin the wheel to start tracking.</div>';return;}
-    hist.forEach(h=>{const row=document.createElement("div");row.className="lrow"+(h.removed?" removed":"");
-      const ic=document.createElement("span");ic.className="li";ic.textContent=ICON[h.type]||"•";
-      const t=document.createElement("span");t.className="lt";t.textContent=h.label+(h.removed?" — pulled":"");
-      const d=document.createElement("span");d.className="ld";d.textContent=fmt(h.ts);row.append(ic,t,d);list.appendChild(row);});}
+  function renderWinners(){refreshStatsUI();const list=$("#logList");list.innerHTML="";
+    if(!winners.length){list.innerHTML='<div class="empty">No winners yet.<br>Winners you accept are logged here.</div>';return;}
+    winners.forEach((wn,idx)=>{const row=document.createElement("div");row.className="lrow"+(wn.paid?" removed":"");
+      const t=document.createElement("span");t.className="lt";t.textContent=wn.name;
+      const d=document.createElement("span");d.className="ld";d.textContent=fmt(wn.ts);
+      const pay=document.createElement("button");pay.className="paybtn"+(wn.paid?" done":"");pay.textContent=wn.paid?"✓ Given":"Owed";
+      pay.onclick=()=>{wn.paid=!wn.paid;saveWinners();renderWinners();};
+      const x=document.createElement("button");x.className="x";x.textContent="×";x.onclick=()=>{winners.splice(idx,1);saveWinners();renderWinners();};
+      row.append(t,d,pay,x);list.appendChild(row);});}
 
   let hintTimer;function showHint(m){const h=$("#hint");h.textContent=m;h.classList.add("show");clearTimeout(hintTimer);hintTimer=setTimeout(()=>h.classList.remove("show"),4500);}
   function toggleFs(){const d=document;if(!d.fullscreenElement&&!d.webkitFullscreenElement)(document.documentElement.requestFullscreen||document.documentElement.webkitRequestFullscreen||(()=>{})).call(document.documentElement);
@@ -536,15 +546,16 @@
   document.querySelectorAll(".chip").forEach(ch=>ch.onclick=()=>{items.push(mkSpecial(ch.dataset.add));saveItems();renderList();draw();refreshStatsUI();});
   $("#shuffleBtn").onclick=()=>{for(let i=items.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[items[i],items[j]]=[items[j],items[i]];}saveItems();renderList();draw();};
   $("#resetBtn").onclick=()=>{if(confirm("Refill the full name list? (keeps your joke wedges and history)")){const specials=items.filter(it=>it.type!=="name");items=interleave(DEFAULT_NAMES.map(mkName),specials);saveItems();renderList();draw();refreshStatsUI();}};
-  $("#removeWinner").onclick=e=>{const id=e.currentTarget.dataset.id,i=items.findIndex(it=>it.id===id);
-    if(i>=0){const nm=items[i].label;items.splice(i,1);saveItems();stats.pulled=(stats.pulled||0)+1;saveStats();
-      const h=hist.find(x=>x.type==="name"&&x.label===nm&&!x.removed);if(h){h.removed=true;saveHist();}refreshStatsUI();}closeModal();};
-  $("#keepWinner").onclick=closeModal;
+  $("#removeWinner").onclick=()=>{let i=items.findIndex(it=>it.id===currentWinnerId);
+    if(i<0&&pendingWinner!=null&&items[pendingWinner]&&items[pendingWinner].label===currentWinnerName)i=pendingWinner;
+    if(i>=0){logWinner(items[i].label);items.splice(i,1);saveItems();}
+    closeModal();renderList();refreshStatsUI();};
+  $("#keepWinner").onclick=()=>{if(currentWinnerName)logWinner(currentWinnerName);closeModal();renderList();refreshStatsUI();};
   $("#spinAgain").onclick=()=>{closeModal();setTimeout(spin,280);};
-  function closeModal(){$("#modal").classList.remove("show");$("#spinBtn").disabled=false;spinning=false;const st=$("#stage");st.style.transform="";st.classList.remove("anim-tip","anim-zoom","anim-wshake");$("#pointer").classList.remove("slam");$(".app").classList.remove("shake");if(hiddenIndex!==-1){hiddenIndex=-1;draw();}}
+  function closeModal(){$("#modal").classList.remove("show");$("#spinBtn").disabled=false;spinning=false;const st=$("#stage");st.style.transform="";st.classList.remove("anim-tip","anim-zoom","anim-wshake");$("#pointer").classList.remove("slam");$(".app").classList.remove("shake");hiddenIndex=-1;draw();}
   $("#modal").addEventListener("click",e=>{if(e.target===$("#modal"))closeModal();});
-  $("#clearLogBtn").onclick=()=>{if(confirm("Clear all spin history and counters?")){hist=[];stats={pulled:0,spins:0};saveHist();saveStats();renderLog();}};
-  $("#copyLogBtn").onclick=()=>{const txt=hist.map(h=>`${fmt(h.ts)}\t${h.label}${h.removed?" (pulled)":""}`).join("\n");
+  $("#clearLogBtn").onclick=()=>{if(confirm("Clear the entire winners log?")){winners=[];saveWinners();renderWinners();}};
+  $("#copyLogBtn").onclick=()=>{const txt="Winner\tDate\tStatus\n"+winners.map(w=>`${w.name}\t${fmt(w.ts)}\t${w.paid?"given":"OWED"}`).join("\n");
     (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>showToast("Copied")).catch(()=>showHint("Copy not available here."));};
 
   let raf;window.addEventListener("resize",()=>{DPR=Math.min(window.devicePixelRatio||1,2);cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{fitStage();sizeFx();});});
