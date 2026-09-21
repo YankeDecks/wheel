@@ -295,7 +295,7 @@
     x.beginPath();x.arc(0,0,r*0.30,0,TAU);x.fill();x.restore();}
 
   const wheel=$("#wheel"),wctx=wheel.getContext("2d");
-  let rot=0,spinning=false,DPR=Math.min(window.devicePixelRatio||1,2),pendingWinner=null,hiddenIndex=-1,celebrated=false,flap=0;
+  let rot=0,spinning=false,DPR=Math.min(window.devicePixelRatio||1,2),pendingWinner=null,hiddenIndex=-1,celebrated=false,flap=0,pendingStop=null,pendingMode=null,robberWinner=-1;
   function fitStage(){const m=$(".main").getBoundingClientRect();const side=Math.max(120,Math.min(m.width,m.height)*0.90);
     const st=$("#stage");st.style.width=side+"px";st.style.height=side+"px";sizeWheel();}
   function sizeWheel(){const r=wheel.getBoundingClientRect();wheel.width=Math.max(2,Math.round(r.width*DPR));wheel.height=Math.max(2,Math.round(r.height*DPR));draw();}
@@ -358,7 +358,12 @@
     if(spinning)return;const ni=nameIndexes();if(ni.length===0){showToast("Add names first");return;}
     spinning=true;celebrated=false;requestWake();$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();windup();startHum();
     if(hiddenIndex!==-1){hiddenIndex=-1;draw();}
-    const n=items.length,seg=TAU/n;const k=ni[Math.floor(Math.random()*ni.length)];pendingWinner=k;
+    const n=items.length,seg=TAU/n;
+    const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;
+    pendingMode=nextRevealMode();robberWinner=-1;
+    let stop=winner;
+    if(pendingMode==="swing"){ if(ni.length>=2){const others=ni.filter(i=>i!==winner);stop=others[Math.floor(Math.random()*others.length)];robberWinner=winner;} else {pendingMode="shake";} }
+    pendingStop=stop;const k=stop;
     const prev=items[(k-1+n)%n],next=items[(k+1)%n],r=Math.random();let f;
     if(prev&&prev.type!=="name"&&r<0.5)f=0.13+Math.random()*0.10;
     else if(next&&next.type!=="name"&&r<0.85)f=0.77+Math.random()*0.10;
@@ -372,7 +377,8 @@
       draw();if(p<1)requestAnimationFrame(frame);else{rot=((target%TAU)+TAU)%TAU;draw();stopHum();clunk();flap=0;if(pel)pel.style.transform="";finish();}})(performance.now());
   }
   function finish(){const k=pendingWinner;if(k==null||!items[k]||items[k].type!=="name"){spinning=false;$("#spinBtn").disabled=false;return;}
-    reveal(k);}
+    if(pendingMode==="swing"&&robberWinner>=0&&items[robberWinner]&&items[robberWinner].type==="name"){anticipate(pendingStop,function(){swingRobbery(robberWinner);});}
+    else{reveal(k,pendingMode);}}
 
   /* ---------- three-act reveal: anticipation -> reveal -> celebration (all cosmetic) ---------- */
   let revealBag=[];
@@ -383,7 +389,25 @@
     }
     return revealBag.pop();
   }
-  function reveal(k){ anticipate(k,()=>doReveal(k)); }
+  function swingRobbery(winnerIdx){
+    const it=items[winnerIdx];if(!it){showWinner(winnerIdx);celebrateConfetti();return;}
+    const G=wheelGeom(),n=items.length,seg=TAU/n,dur=1850,t0=performance.now(),A=2.2,dir=(Math.random()<.5?1:-1);crack();
+    (function loop(now){const p=Math.min(1,(now-t0)/dur);
+      const swing=dir*A*Math.exp(-3.0*p)*Math.cos(6.2*p);
+      fctx.clearRect(0,0,fx.width,fx.height);
+      fctx.save();fctx.translate(G.cx,G.cy);fctx.rotate(Math.PI/2+swing);
+      fctx.beginPath();fctx.moveTo(0,0);fctx.arc(0,0,G.R,-seg/2,seg/2);fctx.closePath();
+      fctx.shadowColor="#b0d235";fctx.shadowBlur=G.R*0.12;fctx.fillStyle="#b0d235";fctx.fill();
+      fctx.shadowBlur=0;fctx.strokeStyle="#0a0a0a";fctx.lineWidth=2.5*DPR;fctx.stroke();fctx.restore();
+      const e=1-Math.pow(1-p,3),ny=G.cy+G.R*(0.34+0.34*e);
+      fctx.save();fctx.globalAlpha=Math.min(1,p*1.7);fctx.textAlign="center";fctx.textBaseline="middle";
+      fctx.font=`900 ${Math.round(G.R*0.13)}px "Arial Black",Arial`;
+      fctx.lineWidth=7*DPR;fctx.strokeStyle="#0a0a0a";fctx.strokeText(it.label,G.cx,ny);
+      fctx.fillStyle="#f5f5f3";fctx.fillText(it.label,G.cx,ny);fctx.restore();
+      if(p<1)requestAnimationFrame(loop);else{showWinner(winnerIdx);celebrateConfetti();}
+    })(performance.now());
+  }
+  function reveal(k,mode){ anticipate(k,()=>doReveal(k,mode)); }
   function overlayHighlight(k,a){
     const n=items.length,w=wheel.width,h=wheel.height,cx=w/2,cy=h/2,R=Math.min(cx,cy),seg=TAU/n,a0=rot+k*seg,a1=a0+seg;
     wctx.save();wctx.beginPath();wctx.moveTo(cx,cy);wctx.arc(cx,cy,R,a0,a1);wctx.closePath();
@@ -395,8 +419,8 @@
     (function loop(now){const p=Math.min(1,(now-t0)/dur);draw();overlayHighlight(k,0.35+0.65*Math.abs(Math.sin(p*Math.PI*7)));
       if(p<1)requestAnimationFrame(loop);else{draw();done();}})(performance.now());
   }
-  function doReveal(k){
-    const mode=nextRevealMode();
+  function doReveal(k,mode){
+    if(!mode||mode==="swing")mode="shake";
     try{
       if(mode==="swing"){swingIn(k);return;}
       if(mode==="break"){revealBreak(k);return;}
@@ -597,10 +621,15 @@
   let raf;window.addEventListener("resize",()=>{DPR=Math.min(window.devicePixelRatio||1,2);cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{fitStage();sizeFx();});});
   window.addEventListener("orientationchange",()=>setTimeout(()=>{fitStage();sizeFx();},300));
   (function(){const vb=document.querySelector(".verbadge");if(vb){vb.style.pointerEvents="auto";vb.style.cursor="pointer";vb.title="Tap: demo a chaos reveal";
-    vb.addEventListener("click",function(){if(spinning)return;const ni=nameIndexes();if(!ni.length)return;const k=ni[Math.floor(Math.random()*ni.length)];pendingWinner=k;celebrated=false;spinning=true;$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();doReveal(k);});}})();
+    vb.addEventListener("click",function(){if(spinning)return;const ni=nameIndexes();if(!ni.length)return;
+      const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;celebrated=false;spinning=true;$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();
+      const seg=TAU/items.length,m=nextRevealMode();
+      if(m==="swing"&&ni.length>=2){const others=ni.filter(i=>i!==winner);pendingStop=others[Math.floor(Math.random()*others.length)];robberWinner=winner;pendingMode="swing";
+        rot=(((Math.PI/2-(pendingStop+0.5)*seg)%TAU)+TAU)%TAU;draw();anticipate(pendingStop,function(){swingRobbery(winner);});}
+      else{pendingMode=(m==="swing"?"shake":m);pendingStop=winner;rot=(((Math.PI/2-(winner+0.5)*seg)%TAU)+TAU)%TAU;draw();reveal(winner,pendingMode);}});}})();
   if("serviceWorker"in navigator){let __refreshing=false;navigator.serviceWorker.addEventListener("controllerchange",function(){if(__refreshing)return;__refreshing=true;location.reload();});window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").then(function(reg){setInterval(function(){reg.update();},60000);}).catch(function(){});});}sizeFx();fitStage();renderList();refreshStatsUI();poke();
 })();
 </script>
-<div class="verbadge">Spin to Win · v5 · 2026-09-21</div>
+<div class="verbadge">Spin to Win · v6 · 2026-09-21</div>
 </body>
 </html>
