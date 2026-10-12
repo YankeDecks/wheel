@@ -201,9 +201,10 @@
 
 <div class="modal" id="modal"><div class="rays"></div>
   <div class="card">
-    <div class="label">This week's winner</div>
+    <div class="label" id="winLabel">This week's winner</div>
+    <canvas id="gagCar" width="160" height="160" style="display:none;width:min(160px,40vw);height:auto;margin:2px auto 4px"></canvas>
     <div class="who" id="winnerName">—</div>
-    <div class="prize">Winner of a <b>$10 gift card</b> 🎁</div>
+    <div class="prize" id="prizeLine">Winner of a <b>$10 gift card</b> 🎁</div>
     <div class="modal-actions">
       <button class="btn btn-green" id="removeWinner">Pull off the list</button>
       <button class="btn btn-ghost" id="keepWinner">Keep on wheel</button>
@@ -295,7 +296,7 @@
     x.beginPath();x.arc(0,0,r*0.30,0,TAU);x.fill();x.restore();}
 
   const wheel=$("#wheel"),wctx=wheel.getContext("2d");
-  let rot=0,spinning=false,DPR=Math.min(window.devicePixelRatio||1,2),pendingWinner=null,hiddenIndex=-1,celebrated=false,flap=0,pendingStop=null,pendingMode=null,robberWinner=-1;
+  let rot=0,spinning=false,DPR=Math.min(window.devicePixelRatio||1,2),pendingWinner=null,hiddenIndex=-1,celebrated=false,flap=0,pendingStop=null,pendingMode=null,robberWinner=-1;let realSpin=false,halfCarArmed=false;try{halfCarArmed=(localStorage.getItem("halfcar_oneshot_v9")!=="done");}catch(e){halfCarArmed=true;}
   function fitStage(){const m=$(".main").getBoundingClientRect();const side=Math.max(120,Math.min(m.width,m.height)*0.90);
     const st=$("#stage");st.style.width=side+"px";st.style.height=side+"px";sizeWheel();}
   function sizeWheel(){const r=wheel.getBoundingClientRect();wheel.width=Math.max(2,Math.round(r.width*DPR));wheel.height=Math.max(2,Math.round(r.height*DPR));draw();}
@@ -356,7 +357,7 @@
   let lastTickSeg=-1;
   function spin(){
     if(spinning)return;const ni=nameIndexes();if(ni.length===0){showToast("Add names first");return;}
-    spinning=true;celebrated=false;requestWake();$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();windup();startHum();
+    spinning=true;realSpin=true;celebrated=false;requestWake();$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();windup();startHum();
     if(hiddenIndex!==-1){hiddenIndex=-1;draw();}
     const n=items.length,seg=TAU/n;
     const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;
@@ -463,7 +464,18 @@
   }
   function showWinner(k){const it=items[k];if(!it){$("#spinBtn").disabled=false;return;}
     if(celebrated)return;celebrated=true;currentWinnerId=it.id;currentWinnerName=it.label;
-    $("#winnerName").textContent=it.label;$("#modal").classList.add("show");fanfare2();airhorn();cheer();setTimeout(function(){say("The winner is "+it.label);},400);}
+    $("#winnerName").textContent=it.label;
+    var gag=halfCarArmed&&realSpin;
+    if(gag){halfCarArmed=false;try{localStorage.setItem("halfcar_oneshot_v9","done");}catch(e){}}
+    var lbl=$("#winLabel"),pz=$("#prizeLine"),gc=$("#gagCar");
+    if(gag){if(lbl)lbl.textContent="Congratulations, you won…";
+      if(pz)pz.innerHTML="<b>HALF A CAR</b> 🚗";
+      if(gc){gc.style.display="block";var gx=gc.getContext("2d");gx.clearRect(0,0,gc.width,gc.height);drawHalfCar(gx,gc.width/2,gc.height/2,gc.height*0.34,"#b0d235","#0f1305");}}
+    else{if(lbl)lbl.textContent="This week's winner";
+      if(pz)pz.innerHTML="Winner of a <b>$10 gift card</b> 🎁";
+      if(gc)gc.style.display="none";}
+    $("#modal").classList.add("show");fanfare2();airhorn();cheer();
+    setTimeout(function(){say(gag?(it.label+" wins… half a car!"):("The winner is "+it.label));},400);}
   function celebrateConfetti(){let v=0;(function volley(){
     burstAt(fx.width*0.5,fx.height*0.34,150,null,1);
     burstAt(fx.width*0.06,fx.height*0.54,70,-0.35,1.15);
@@ -626,12 +638,12 @@
   window.addEventListener("orientationchange",()=>setTimeout(()=>{fitStage();sizeFx();},300));
   (function(){const vb=document.querySelector(".verbadge");if(vb){vb.style.pointerEvents="auto";vb.style.cursor="pointer";vb.title="Tap: demo a chaos reveal";
     vb.addEventListener("click",function(){if(spinning)return;const ni=nameIndexes();if(!ni.length)return;
-      const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;celebrated=false;spinning=true;$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();
+      const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;celebrated=false;spinning=true;realSpin=false;$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();
       const seg=TAU/items.length;let m=nextRevealMode();if(m==="swing")m="shake";pendingMode=m;pendingStop=winner;
       rot=(((Math.PI/2-(winner+0.5)*seg)%TAU)+TAU)%TAU;draw();reveal(winner,pendingMode);});}})();
   if("serviceWorker"in navigator){let __refreshing=false;navigator.serviceWorker.addEventListener("controllerchange",function(){if(__refreshing)return;__refreshing=true;location.reload();});window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").then(function(reg){setInterval(function(){reg.update();},60000);}).catch(function(){});});}sizeFx();fitStage();renderList();refreshStatsUI();poke();
 })();
 </script>
-<div class="verbadge">Spin to Win · v8 · 2026-09-21</div>
+<div class="verbadge">Spin to Win · v9 · 2026-10-12</div>
 </body>
 </html>
