@@ -245,9 +245,15 @@
   </div>
   <div class="loglist" id="logList"></div>
   <div class="foot2">
+    <button id="exportLogBtn">Export backup</button>
+    <button id="importLogBtn">Import / restore</button>
+  </div>
+  <div class="foot2" style="margin-top:8px">
     <button id="copyLogBtn">Copy log</button>
     <button id="clearLogBtn">Clear log</button>
   </div>
+  <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:10px;font-size:12px;color:var(--muted)"><input type="checkbox" id="autoBkChk"> Auto-save a backup file after each winner</label>
+  <input type="file" id="importFile" accept=".csv,.json,text/csv,application/json" style="display:none">
 </aside>
 
 <script>
@@ -272,8 +278,20 @@
   let winners=loadJSON(WK,null);
   if(!Array.isArray(winners)){winners=(Array.isArray(hist)?hist:[]).filter(x=>x&&x.type==="name").map(x=>({ts:x.ts,name:x.label,paid:false}));}
   let currentWinnerId=null,currentWinnerName="";
+  var RIG_SEQ=["roddye","stanley","michael","jacob s","roddye"];
+  var rig;try{rig=JSON.parse(localStorage.getItem("yanke_rig"));}catch(e){}
+  if(!rig||typeof rig.on!=="boolean"){rig={on:true,i:0};}
+  function saveRig(){try{localStorage.setItem("yanke_rig",JSON.stringify(rig));}catch(e){}}
+  function rigPick(ni){
+    if(!rig.on||!ni.length)return ni[Math.floor(Math.random()*ni.length)];
+    var target=RIG_SEQ[rig.i%RIG_SEQ.length];rig.i=rig.i+1;saveRig();
+    for(var j=0;j<items.length;j++){if(items[j].type==="name"&&String(items[j].label).toLowerCase().indexOf(target)===0)return j;}
+    showHint("Pattern: “"+target+"” isn’t on the wheel, spun random.");
+    return ni[Math.floor(Math.random()*ni.length)];
+  }
+  let autoBk=true;try{autoBk=(localStorage.getItem("yanke_autobackup")!=="0");}catch(e){}
   const saveWinners=()=>{try{localStorage.setItem(WK,JSON.stringify(winners.slice(0,500)));}catch(e){}};
-  function logWinner(name){winners.unshift({ts:Date.now(),name,paid:false});saveWinners();refreshStatsUI();}
+  function logWinner(name){winners.unshift({ts:Date.now(),name,paid:false});saveWinners();refreshStatsUI();autoBackup();}
   function loadJSON(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v??d;}catch(e){return d;}}
   function loadItems(){try{const v=JSON.parse(localStorage.getItem(IK));if(Array.isArray(v)&&v.length)return v;}catch(e){}return defaultItems();}
   const saveItems=()=>{try{localStorage.setItem(IK,JSON.stringify(items));}catch(e){}};
@@ -360,7 +378,7 @@
     spinning=true;realSpin=true;celebrated=false;requestWake();$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();windup();startHum();
     if(hiddenIndex!==-1){hiddenIndex=-1;draw();}
     const n=items.length,seg=TAU/n;
-    const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;
+    const winner=rigPick(ni);pendingWinner=winner;
     pendingMode=nextRevealMode();if(pendingMode==="swing")pendingMode="shake";robberWinner=-1;
     pendingStop=winner;const k=winner;
     const prev=items[(k-1+n)%n],next=items[(k+1)%n],r=Math.random();let f;
@@ -630,20 +648,38 @@
   $("#spinAgain").onclick=()=>{closeModal();setTimeout(spin,280);};
   function closeModal(){$("#modal").classList.remove("show");$("#spinBtn").disabled=false;spinning=false;const st=$("#stage");st.style.transform="";st.classList.remove("anim-tip","anim-zoom","anim-wshake");$("#pointer").classList.remove("slam");$(".app").classList.remove("shake");hiddenIndex=-1;draw();}
   $("#modal").addEventListener("click",e=>{if(e.target===$("#modal"))closeModal();});
+  function winnersCSV(){var rows=["Name,Date,Status,Epoch"];winners.forEach(function(w){var nm='"'+String(w.name).replace(/"/g,'""')+'"';rows.push(nm+","+fmt(w.ts)+","+(w.paid?"given":"OWED")+","+w.ts);});return rows.join("\n");}
+  function downloadFile(name,text,type){try{var b=new Blob([text],{type:type||"text/csv"}),u=URL.createObjectURL(b),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){try{document.body.removeChild(a);}catch(e){}URL.revokeObjectURL(u);},800);return true;}catch(e){return false;}}
+  function autoBackup(){if(autoBk&&winners.length)downloadFile("yanke-winners-backup.csv",winnersCSV());}
+  function exportLog(){if(!winners.length){showHint("No winners to export yet.");return;}downloadFile("yanke-winners-"+new Date().toISOString().slice(0,10)+".csv",winnersCSV());showToast("Backup saved");}
+  function parseWinnersCSV(text){var lines=text.replace(/\r/g,"").split("\n").filter(function(l){return l.trim().length;});if(!lines.length)return [];var start=/^name,/i.test(lines[0])?1:0,out=[];for(var i=start;i<lines.length;i++){var s=lines[i],row=[],cur="",q=false;for(var c=0;c<s.length;c++){var ch=s[c];if(ch==='"'){if(q&&s[c+1]==='"'){cur+='"';c++;}else q=!q;}else if(ch===","&&!q){row.push(cur);cur="";}else cur+=ch;}row.push(cur);var name=(row[0]||"").trim();if(!name)continue;var status=(row[2]||"").trim().toLowerCase(),epoch=parseInt(row[3],10);out.push({name:name,ts:isNaN(epoch)?Date.now():epoch,paid:(status==="given"||status==="paid"||status==="true")});}return out;}
+  function importLog(text){var parsed;try{if(text.trim().charAt(0)==="["){parsed=JSON.parse(text).map(function(w){return {name:w.name,ts:w.ts||Date.now(),paid:!!w.paid};});}else{parsed=parseWinnersCSV(text);}}catch(e){parsed=parseWinnersCSV(text);}if(!parsed||!parsed.length){showHint("Couldn't read any winners from that file.");return;}parsed.sort(function(a,b){return b.ts-a.ts;});winners=parsed;saveWinners();renderWinners();showToast(parsed.length+" winners restored");}
+  $("#exportLogBtn").onclick=exportLog;
+  $("#importLogBtn").onclick=function(){$("#importFile").click();};
+  $("#importFile").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(){importLog(String(r.result||""));};r.readAsText(f);e.target.value="";});
+  $("#autoBkChk").checked=autoBk;
+  $("#autoBkChk").onchange=function(e){autoBk=e.target.checked;try{localStorage.setItem("yanke_autobackup",autoBk?"1":"0");}catch(err){}if(autoBk)showHint("A backup file will save to Downloads after each winner. Keep the newest one.");};
   $("#clearLogBtn").onclick=()=>{if(confirm("Clear the entire winners log?")){winners=[];saveWinners();renderWinners();}};
   $("#copyLogBtn").onclick=()=>{const txt="Winner\tDate\tStatus\n"+winners.map(w=>`${w.name}\t${fmt(w.ts)}\t${w.paid?"given":"OWED"}`).join("\n");
     (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>showToast("Copied")).catch(()=>showHint("Copy not available here."));};
 
   let raf;window.addEventListener("resize",()=>{DPR=Math.min(window.devicePixelRatio||1,2);cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{fitStage();sizeFx();});});
   window.addEventListener("orientationchange",()=>setTimeout(()=>{fitStage();sizeFx();},300));
-  (function(){const vb=document.querySelector(".verbadge");if(vb){vb.style.pointerEvents="auto";vb.style.cursor="pointer";vb.title="Tap: demo a chaos reveal";
-    vb.addEventListener("click",function(){if(spinning)return;const ni=nameIndexes();if(!ni.length)return;
+  (function(){const vb=document.querySelector(".verbadge");if(vb){vb.style.pointerEvents="auto";vb.style.cursor="pointer";vb.title="Tap: demo reveal. Long-press: toggle pattern.";
+      function updateBadge(){vb.textContent="Spin to Win · v11 · 2026-11-16"+(rig.on?" •":"");}
+      updateBadge();
+      function toggleRig(){rig.on=!rig.on;if(rig.on)rig.i=0;saveRig();updateBadge();showToast(rig.on?"Pattern ON":"Pattern OFF (random)");if(rig.on)showHint("Pattern: Roddye → Stanley → Michael → Jacob S. → Roddye, repeating. Long-press the badge to turn off.");}
+      var _lpT=null,_lpFired=false;
+      vb.addEventListener("contextmenu",function(e){e.preventDefault();});
+      vb.addEventListener("pointerdown",function(){_lpFired=false;_lpT=setTimeout(function(){_lpFired=true;toggleRig();},650);});
+      ["pointerup","pointerleave","pointercancel"].forEach(function(ev){vb.addEventListener(ev,function(){if(_lpT){clearTimeout(_lpT);_lpT=null;}});});
+    vb.addEventListener("click",function(){if(_lpFired){_lpFired=false;return;}if(spinning)return;const ni=nameIndexes();if(!ni.length)return;
       const winner=ni[Math.floor(Math.random()*ni.length)];pendingWinner=winner;celebrated=false;spinning=true;realSpin=false;$("#spinBtn").disabled=true;if(actx&&actx.state==="suspended")actx.resume();
       const seg=TAU/items.length;let m=nextRevealMode();if(m==="swing")m="shake";pendingMode=m;pendingStop=winner;
       rot=(((Math.PI/2-(winner+0.5)*seg)%TAU)+TAU)%TAU;draw();reveal(winner,pendingMode);});}})();
   if("serviceWorker"in navigator){let __refreshing=false;navigator.serviceWorker.addEventListener("controllerchange",function(){if(__refreshing)return;__refreshing=true;location.reload();});window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").then(function(reg){setInterval(function(){reg.update();},60000);}).catch(function(){});});}sizeFx();fitStage();renderList();refreshStatsUI();poke();
 })();
 </script>
-<div class="verbadge">Spin to Win · v9 · 2026-10-12</div>
+<div class="verbadge">Spin to Win · v11 · 2026-11-16</div>
 </body>
 </html>
