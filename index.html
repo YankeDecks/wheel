@@ -289,7 +289,7 @@
     showHint("Pattern: “"+target+"” isn’t on the wheel, spun random.");
     return ni[Math.floor(Math.random()*ni.length)];
   }
-  let autoBk=true;try{autoBk=(localStorage.getItem("yanke_autobackup")!=="0");}catch(e){}
+  let autoBk=true;try{autoBk=(localStorage.getItem("yanke_autobackup")==="1");}catch(e){}
   const saveWinners=()=>{try{localStorage.setItem(WK,JSON.stringify(winners.slice(0,500)));}catch(e){}};
   function logWinner(name){winners.unshift({ts:Date.now(),name,paid:false});saveWinners();refreshStatsUI();autoBackup();}
   function loadJSON(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v??d;}catch(e){return d;}}
@@ -666,7 +666,7 @@
   let raf;window.addEventListener("resize",()=>{DPR=Math.min(window.devicePixelRatio||1,2);cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{fitStage();sizeFx();});});
   window.addEventListener("orientationchange",()=>setTimeout(()=>{fitStage();sizeFx();},300));
   (function(){const vb=document.querySelector(".verbadge");if(vb){vb.style.pointerEvents="auto";vb.style.cursor="pointer";vb.title="Tap: demo reveal. Long-press: toggle pattern.";
-      function updateBadge(){vb.textContent="Spin to Win · v11 · 2026-11-16"+(rig.on?" •":"");}
+      function updateBadge(){vb.textContent="Spin to Win · v12 · 2026-11-16"+(rig.on?" •":"");}
       updateBadge();
       function toggleRig(){rig.on=!rig.on;if(rig.on)rig.i=0;saveRig();updateBadge();showToast(rig.on?"Pattern ON":"Pattern OFF (random)");if(rig.on)showHint("Pattern: Roddye → Stanley → Michael → Jacob S. → Roddye, repeating. Long-press the badge to turn off.");}
       var _lpT=null,_lpFired=false;
@@ -680,6 +680,6 @@
   if("serviceWorker"in navigator){let __refreshing=false;navigator.serviceWorker.addEventListener("controllerchange",function(){if(__refreshing)return;__refreshing=true;location.reload();});window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").then(function(reg){setInterval(function(){reg.update();},60000);}).catch(function(){});});}sizeFx();fitStage();renderList();refreshStatsUI();poke();
 })();
 </script>
-<div class="verbadge">Spin to Win · v11 · 2026-11-16</div>
+<div class="verbadge">Spin to Win · v12 · 2026-11-16</div>
 </body>
 </html>
